@@ -1,5 +1,7 @@
 sds -- Simple Document Storage
 
+== INTRODUCTION ==
+
 The very short description is that this is a schema agnostic JSON document storage
 system.  It allows you to easily perform CRUD operations on the documents that you
 have stored.  Basic search functionality (documents that match all of these terms)
@@ -12,5 +14,64 @@ that do work in this area.
 Note that the system is very quick and dirty.  I'd be happy to make it more robust
 and efficient, but that wasn't a huge design concern while coding it.
 
+== USAGE ==
+
+Spin up the document server somewhere:
+
+    $ sds-server -p 6329 -c /path/to/store/your/database/sds.json
+
+Now you can start using it.  Let's throw a very simple document in there:
+
+    $ sds -H host -p 6329 new type=server name=orange ip=127.0.0.1
+
+This syntax is just shorthand.  It allows you to specify key value pairs and it
+builds a simple POST request to the document store.  The 'new' verb does what you
+might expect and creates a new document.
+
+You should get a response telling you document 0 was created.  You can now view
+that document's raw stored form (I will leave out the host/port params now):
+
+    $ sds get 0
+
+That's exactly what got stored.  An id key got added for you automatically so
+if you get these objects later you know how to reference them in the store.
+
+Some other useful commands:
+
+    $ sds dump
+    $ sds delete 0
+
+You can replace a document with a different one entirely:
+
+    $ sds replace 0 type=server name=yellow ip=127.0.0.2
+
+The old document is now gone.  If you just want to change some of the columns
+you can do that this way:
+
+    $ sds update_partial 0 name=purple ip=127.0.0.3
+
+Type 'type' key remains the same through this.  Search is similarly easy and
+operates on an AND basis:
+
+    $ sds find_only_one name=purple
+
+That returns one and only one item.  If it matches more than one result, an error
+is returned.
+
+    $ sds find_only_one type=server name=purple
+
+Just in case you have multiple entries with the name purple, but their types
+differ, you can constrain on both.  But if you want to find all of the documents
+that match your query:
+
+    $ sds find_all type=server
+
+That's all for now.  More to come.
+
+
+== COPYRIGHT AND LICENSING ==
+
 Written by Mark Smith under the employ of Bump Technologies.  Because I'm tired of
 there being no damn simple inventory management system.
+
+License pending.
