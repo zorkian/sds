@@ -2,9 +2,13 @@
 #
 # sis -- Simple Inventory System
 #
-#    sis <verb> [objid] [field=value ...]
+# This system assumes that your documents have some basic information and will do
+# some very basic asserting to make sure that your data has at least a name.  This is
+# to make it easier for us to print out later.
 #
-# e.g.,
+#    sis --host=localhost --port=6329 <verb> [objid] [field=value ...]
+#
+# e.g., (ignoring the server/port parameters)
 #
 #    sis dump
 #    sis get 1
@@ -16,9 +20,95 @@
 #
 
 import sys
+import urllib2
+from json import loads, dumps
+from optparse import OptionParser
+
+
+def print_object(obj):
+    '''Print a single object out so we can see the details of it.'''
+    print dumps(obj, sort_keys=True, indent=4)
+
+
+def print_object_list(objlist):
+    '''Print out a list of objects.'''
+    for idx in objlist:
+        obj = objlist[idx]
+        name = obj['name'] if 'name' in obj else '(none)'
+        print '%-4d %s' % (obj['id'], name)
 
 
 def main(argv):
+    '''Where the fun begins.'''
+
+    # parse out command line options
+    p = OptionParser()
+    p.add_option('-H', '--host', dest='host', default='localhost',
+        help='Host to connect to', metavar='HOST')
+    p.add_option('-p', '--port', dest='port', type='int', default=6329,
+        help='Port to listen on', metavar='PORT')
+    (opts, args) = p.parse_args(argv)
+
+    # require at least one arg
+    if len(args) <= 1:
+        print "Not enough arguments"
+        return 1
+
+    # the rest of the data is now in args, build the URL
+    verb = args[1]
+    objid = args[2] if len(args) >= 3 and args[2].isdigit() else ''
+    url = 'http://%s:%d/%s/%s' % (opts.host, opts.port, args[1], objid)
+
+    # now build the reqobj
+    obj = {}
+    for kv in args[3 if objid else 2:]:
+        if not '=' in kv:
+            print 'Parameter "%s" does not conform to expected key=value format' % kv
+            return 1
+        key, value = kv.split('=', 1)
+        obj[key] = value
+
+    # set the method to POST if we recognize the verb or if there is a payload
+    method = 'POST' if len(obj) > 0 else 'GET'
+    if verb in ('delete'):
+        method = 'POST'
+    payload = dumps(obj) if method == 'POST' else None
+
+    # construct the request object to send it out
+    res = urllib2.urlopen(url, payload)
+    if res is None:
+        print 'Failed requesting resource'
+        return 1
+
+    # probably a JSON response, get it
+    try:
+        resobj = loads(res.read())
+        res.close()
+    except ValueError:
+        print 'Failed parsing server response'
+        return 1
+
+    # protocol failure check
+    if not resobj['success']:
+        print 'Failure: %s' % resobj['content']
+        return 1
+
+    # these are simple responses, we can handle them here
+    if verb == 'new':
+        print 'Object %s created.' % resobj['content']
+    elif verb == 'delete':
+        print 'Object %s deleted.' % objid
+    elif verb == 'replace':
+        print 'Object %s replaced.' % objid
+    elif verb == 'update_partial':
+        print 'Object %s updated.' % objid
+    elif verb in ('get', 'find_only_one'):
+        print_object(resobj['content'])
+    elif verb in ('dump', 'find_all'):
+        print_object_list(resobj['content'])
+    else:
+        print 'Bad verb'
+        return 1
     return 0
 
 
