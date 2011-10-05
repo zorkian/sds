@@ -1,0 +1,299 @@
+#!/usr/bin/python
+#
+# sis-server -- Simple Inventory System Server
+#
+# written by Mark Smith <mark@qq.is>
+#
+
+import os
+import re
+import sys
+from diesel import Application, Service, Loop, log as glog, sleep
+from diesel.protocols import http
+from json import loads, dumps
+from optparse import OptionParser
+from time import time
+
+DB = {} # objid => object
+JSON = {} # objid => JSON string (saves time later)
+NEXT_ID = 0
+LOG = None # Logger
+URL_REGEX = re.compile(r'^/(\w+)(?:/(\d+)?)?$')
+
+
+def _send_json(req, success, content):
+    '''Internal JSON sender.'''
+    headers = http.HttpHeaders()
+    out = dumps({ 'success': success, 'content': content })
+    headers.add('Content-Length', len(out))
+    headers.add('Content-Type', 'application/json')
+    return http.http_response(req, 200, headers, out)
+
+
+def json_error(req, msg):
+    '''Return an error message to the caller.'''
+    return _send_json(req, False, msg)
+    
+    
+def json_response(req, msg):
+    '''Return an error message to the caller.'''
+    return _send_json(req, True, msg)
+
+
+def http_get_object(req, objid, reqobj):
+    '''Get a single object and return the document for it.'''
+    global DB
+    if objid is None:
+        return json_error(req, 'Object ID required')
+    if not objid in DB:
+        return json_error(req, 'Object ID %d not found' % objid)
+    return json_response(req, DB[objid])
+
+
+def http_replace_object(req, objid, reqobj):
+    '''Replace an existing object in the database.'''
+    global DB
+    if objid is None:
+        return json_error(req, 'Object ID required')
+    if reqobj is None:
+        return json_error(req, 'Object required')
+    DB[objid] = reqobj
+    return json_response(req, 'stored')  
+
+
+def http_update_partial_object(req, objid, reqobj):
+    '''Replace fields in an existing object with fields from the new object.  Does not
+    allow changing the id, however.'''
+    global DB
+    if objid is None:
+        return json_error(req, 'Object ID required')
+    if reqobj is None:
+        return json_error(req, 'Object required')
+    if 'id' in reqobj:
+        return json_error(req, 'Id field is not mutable')
+    for field in reqobj:
+        DB[objid][field] = reqobj[field]
+    return json_response(req, 'updated')  
+
+
+def http_new_object(req, objid, reqobj):
+    '''Create a new object and return the objectid.'''
+    global DB, NEXT_ID
+    if objid is not None:
+        return json_error(req, 'Object ID provided erroneously')
+    if reqobj is None:
+        return json_error(req, 'Object required')
+    if 'id' in reqobj:
+        return json_error(req, 'Object must not contain "id" field')
+
+    reqobj['id'] = NEXT_ID
+    DB[NEXT_ID] = reqobj
+    NEXT_ID += 1
+    return json_response(req, reqobj['id'])
+
+
+def http_dump_objects(req, objid, reqobj):
+    '''Dump the database of all objects.'''
+    global DB
+    return json_response(req, DB)
+
+
+def http_find_only_one_object(req, objid, reqobj):
+    '''Search for an object and return one, and only one, object.  If more than
+    one object matches the search criteria, an error is returned.  If no objects
+    are matched, null is returned.'''
+    global DB
+    for key in ('field', 'value'):
+        if key not in reqobj:
+            return json_error(req, 'Parameter %s required for search' % key)
+
+    retval = None
+    for key in DB:
+        if not reqobj['field'] in DB[key]:
+            continue
+        if DB[key][reqobj['field']] != reqobj['value']:
+            continue
+        if retval is not None:
+            return json_error(req, 'Multiple matches')
+        retval = DB[key]
+    return json_response(req, retval)
+
+
+def http_delete_object(req, objid, reqobj):
+    '''Delete a particular object.'''
+    global DB
+    if objid is None:
+        return json_error(req, 'Object ID required')
+    del DB[objid]
+    return json_response(req, 'deleted')
+
+
+def http_find_all_objects(req, objid, reqobj):
+    '''Search for all objects that match a given crieteria.'''
+    global DB
+    for key in ('field', 'value'):
+        if key not in reqobj:
+            return json_error(req, 'Parameter "%s" required for search' % key)
+
+    ret = []
+    for key in DB:
+        if not reqobj['field'] in DB[key]:
+            continue
+        if DB[key][reqobj['field']] != reqobj['value']:
+            continue
+        ret.append(DB[key])
+    return json_response(req, ret)
+
+
+def http_handler(req):
+    '''Handle an incoming HTTP request.'''
+    
+    # all requests should follow this very simple format
+    global URL_REGEX
+    res = URL_REGEX.match(req.url)
+    if res is None:
+        return json_error(req, 'Invalid request URI')
+    verb, objid = res.group(1), res.group(2)
+    
+    # if it's a POST, try to extract a JSON object from the body
+    try:
+        reqobj = loads(req.body) if req.method == 'POST' else None
+    except ValueError:
+        return json_error(req, 'Invalid JSON body')
+    if reqobj is not None and type(reqobj) is not dict:
+        return json_error(req, 'JSON body must be a dict')
+
+    # dispatch table goes here
+    dispatch = {
+        'GET': {
+            'get': http_get_object,
+            'dump': http_dump_objects,
+        },
+        'POST': {
+            'new': http_new_object,
+            'delete': http_delete_object,
+            'replace': http_replace_object,
+            'update_partial': http_update_partial_object,
+            'find_only_one': http_find_only_one_object,
+            'find_all': http_find_all_objects,
+        }
+    }
+
+    # now see what we can do with this
+    if not req.method in dispatch:
+        return json_error(req, 'Method %s not supported' % req.method)
+    if not verb in dispatch[req.method]:
+        return json_error(req, 'Verb %s (method %s) not supported' % (verb, req.method))
+    return dispatch[req.method][verb](req, objid, reqobj)
+
+
+def save_config(conf):
+    '''Write configuration out to the configuration directory.  We try to be safe and write out
+    the configuration to a temporary file before moving it back to the standard location.
+    
+    NOTE: maybe we should save every time a change is made?  It seems to me like that might generate
+    a lot of undue traffic.  Of course, if we lose N seconds of transactions, is that worse?  WAL?
+    This is supposed to be a super simple system.'''
+    global DB
+    next_save = time()
+    while True:
+        now = time()
+        if now < next_save:
+            sleep(next_save - now)
+        next_save = now + 5
+
+        try:
+            tmp = conf + '.tmp'
+            backup = conf + '.bak'
+
+            f = open(tmp, 'w')
+            f.write(dumps(DB))
+            f.close()
+
+            os.rename(conf, backup)
+            os.rename(tmp, conf)
+        except IOError:
+            critical('UNABLE TO WRITE OUT CONFIGURATION FILE.')
+            raise
+
+
+def critical(msg):
+    '''Handle error messaging.'''
+    global LOG
+    LOG.critical(msg)
+    return 1
+    
+
+def info(msg):
+    '''Print an informative logging message.'''
+    global LOG
+    LOG.info(msg)
+    return 0
+    
+
+def warn(msg):
+    '''Print a warning message.'''
+    global LOG
+    LOG.warn(msg)
+    return 0
+
+
+def main(argv):
+    '''Entry point.  Sets up the application loops and then gets out of the way to
+    allow diesel to do the rest.'''
+
+    # do this early to give us access to the logging methods diesel provides
+    global DB, LOG
+    app = Application()
+
+    # parse out command line options
+    p = OptionParser()
+    p.add_option('-p', '--port', dest='port', type='int', default=6329,
+        help='Port to listen on', metavar='PORT')
+    p.add_option('-q', '--quiet', dest='quiet', action='store_true',
+        help='Quiet mode')
+    p.add_option('-c', '--config', dest='config',
+        help='Configuration file (JSON file)', metavar='FILE')
+    (opts, args) = p.parse_args(argv)
+
+    # option validation
+    if opts.quiet:
+        LOG = glog.sublog('sis-server', glog.warning)
+    else:
+        LOG = glog.sublog('sis-server', glog.info)
+    if not opts.config:
+        return critical('Configuration file not specified')
+    if not os.path.isfile(opts.config):
+        return critical('Configuration file not found (touch it)')
+
+    # now load the config file
+    try:
+        f = open(opts.config, 'r')
+        contents = f.read()
+        if contents:
+            DB = loads(contents)
+        f.close()
+    except ValueError:
+        return critical('Failed to load configuration file.  Format invalid?')
+    except IOError:
+        return critical('Failed to read the configuration file.')
+
+    # do some config validation
+    if type(DB) is not dict:
+        return critical('Configuration file does not contain a dict?')
+    for key in DB:
+        if not 'id' in DB[key]:
+            return critical('Configuration file contains object with no id.')
+        if int(key) != DB[key]['id']:
+            return critical('ID mismatch in configuration file.')
+
+    # kick off the application
+    info('Listening on port %d, starting to rock and roll!' % opts.port)
+    app.add_service(Service(http.HttpServer(http_handler), opts.port))
+    app.add_loop(Loop(save_config, opts.config), keep_alive=True)
+    app.run()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[0:]))

@@ -1,0 +1,26 @@
+#!/usr/bin/python
+#
+# sis -- Simple Inventory System
+#
+#    sis <verb> [objid] [field=value ...]
+#
+# e.g.,
+#
+#    sis dump
+#    sis get 1
+#    sis new type=server name=server1 ipmi.user=root ...
+#    sis update_partial 1 name=newname ...
+#    sis delete 1
+#
+# written by Mark Smith <mark@qq.is>
+#
+
+import sys
+
+
+def main(argv):
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[0:]))

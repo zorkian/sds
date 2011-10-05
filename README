@@ -1,0 +1,16 @@
+sis -- Simple Inventory System
+
+This is designed to be a very very simple inventory system for storing information
+about servers, switches, and other devices that you wish to keep track of in your
+infrastructure.
+
+In short, this is a JSON storage system.  You create documents and upload them under
+some name of your choice and then, later, you can retrieve and update those documents.
+That is nearly the entire story.
+
+We do provide some very basic ability to insert validators -- code that can be run
+whenever certain actions happen in the system.  You can use this to extend sis to do
+whatever it is you need it to do.  I recommend you keep it simple.
+
+Written by Mark Smith under the employ of Bump Technologies.  Because I'm tired of
+there being no damn simple inventory management system.
