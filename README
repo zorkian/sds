@@ -1,16 +1,16 @@
-sis -- Simple Inventory System
+sds -- Simple Document Storage
 
-This is designed to be a very very simple inventory system for storing information
-about servers, switches, and other devices that you wish to keep track of in your
-infrastructure.
+The very short description is that this is a schema agnostic JSON document storage
+system.  It allows you to easily perform CRUD operations on the documents that you
+have stored.  Basic search functionality (documents that match all of these terms)
+is provided as well.
 
-In short, this is a JSON storage system.  You create documents and upload them under
-some name of your choice and then, later, you can retrieve and update those documents.
-That is nearly the entire story.
+What you do with this system is up to you.  I built this with the intention of using
+it for doing inventory management of our servers.  You'll see example validators
+that do work in this area.
 
-We do provide some very basic ability to insert validators -- code that can be run
-whenever certain actions happen in the system.  You can use this to extend sis to do
-whatever it is you need it to do.  I recommend you keep it simple.
+Note that the system is very quick and dirty.  I'd be happy to make it more robust
+and efficient, but that wasn't a huge design concern while coding it.
 
 Written by Mark Smith under the employ of Bump Technologies.  Because I'm tired of
 there being no damn simple inventory management system.

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# sis-server -- Simple Inventory System Server
+# sds-server -- Simple Document Storage Server
 #
 # written by Mark Smith <mark@qq.is>
 #
@@ -269,9 +269,9 @@ def main(argv):
 
     # option validation
     if opts.quiet:
-        LOG = glog.sublog('sis-server', glog.warning)
+        LOG = glog.sublog('sds-server', glog.warning)
     else:
-        LOG = glog.sublog('sis-server', glog.info)
+        LOG = glog.sublog('sds-server', glog.info)
     if not opts.config:
         return critical('Configuration file not specified')
     if not os.path.isfile(opts.config):

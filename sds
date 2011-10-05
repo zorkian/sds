@@ -1,20 +1,20 @@
 #!/usr/bin/python
 #
-# sis -- Simple Inventory System
+# sds -- Simple Document Storage
 #
 # This system assumes that your documents have some basic information and will do
 # some very basic asserting to make sure that your data has at least a name.  This is
 # to make it easier for us to print out later.
 #
-#    sis --host=localhost --port=6329 <verb> [objid] [field=value ...]
+#    sds --host=localhost --port=6329 <verb> [objid] [field=value ...]
 #
 # e.g., (ignoring the server/port parameters)
 #
-#    sis dump
-#    sis get 1
-#    sis new type=server name=server1 ipmi.user=root ...
-#    sis update_partial 1 name=newname ...
-#    sis delete 1
+#    sds dump
+#    sds get 1
+#    sds new type=server name=server1 ipmi.user=root ...
+#    sds update_partial 1 name=newname ...
+#    sds delete 1
 #
 # written by Mark Smith <mark@qq.is>
 #
