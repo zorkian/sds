@@ -107,23 +107,21 @@ def http_find_only_one_object(req, objid, reqobj):
     one object matches the search criteria, an error is returned.  If no objects
     are matched, null is returned.'''
     global DB
-    field, value = None, None
-    for key in reqobj:
-        if field is not None or value is not None:
-            return json_error(req, 'Must only provide one search term')
-        field, value = key, reqobj[key]
-    if field is None or value is None:
-        return json_error(req, 'Must provide a search term')
+    if not len(reqobj):
+        return json_error(req, 'Must provide at least one search term')
 
     retval = None
     for key in DB:
-        if field not in DB[key]:
-            continue
-        if DB[key][field] != value:
-            continue
-        if retval is not None:
-            return json_error(req, 'Multiple matches found')
-        retval = DB[key]
+        potential = None
+        for field in reqobj:
+            if field not in DB[key] or DB[key][field] != reqobj[field]:
+                potential = None
+                break
+            potential = DB[key]
+        if potential is not None:
+            if retval is not None:
+                return json_error(req, 'Multiple matches found')
+            retval = potential
     return json_response(req, retval)
 
 
@@ -139,21 +137,19 @@ def http_delete_object(req, objid, reqobj):
 def http_find_all_objects(req, objid, reqobj):
     '''Search for all objects that match a given crieteria.'''
     global DB
-    field, value = None, None
-    for key in reqobj:
-        if field is not None or value is not None:
-            return json_error(req, 'Must only provide one search term')
-        field, value = key, reqobj[key]
-    if field is None or value is None:
-        return json_error(req, 'Must provide a search term')
+    if not len(reqobj):
+        return json_error(req, 'Must provide at least one search term')
 
     ret = {}
     for key in DB:
-        if field not in DB[key]:
-            continue
-        if DB[key][field] != value:
-            continue
-        ret[key] = DB[key]
+        potential = None
+        for field in reqobj:
+            if field not in DB[key] or DB[key][field] != reqobj[field]:
+                potential = None
+                break
+            potential = DB[key]
+        if potential is not None:
+            ret[key] = DB[key]
     return json_response(req, ret)
 
 
