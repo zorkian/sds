@@ -25,17 +25,25 @@ from json import loads, dumps
 from optparse import OptionParser
 
 
-def print_object(obj):
+def print_object(obj, idonly=False):
     '''Print a single object out so we can see the details of it.'''
-    print dumps(obj, sort_keys=True, indent=4)
+    if obj is None:
+       return
+    if idonly:
+        print obj['id']
+    else:
+        print dumps(obj, sort_keys=True, indent=4)
 
 
-def print_object_list(objlist):
+def print_object_list(objlist, idonly=False):
     '''Print out a list of objects.'''
     for idx in objlist:
         obj = objlist[idx]
-        name = obj['name'] if 'name' in obj else '(none)'
-        print '%-4d %s' % (obj['id'], name)
+        if idonly:
+            print obj['id']
+        else:
+            name = obj['hostname'] if 'hostname' in obj else '(none)'
+            print '%-4d %s' % (obj['id'], name)
 
 
 def main(argv):
@@ -47,11 +55,13 @@ def main(argv):
         help='Host to connect to', metavar='HOST')
     p.add_option('-p', '--port', dest='port', type='int', default=6329,
         help='Port to listen on', metavar='PORT')
+    p.add_option('-i', '--id-only', dest='idonly', action='store_true',
+        help='Only print the ID of returned records')
     (opts, args) = p.parse_args(argv)
 
     # require at least one arg
     if len(args) <= 1:
-        print "Not enough arguments"
+        print >>sys.stderr, "Not enough arguments"
         return 1
 
     # the rest of the data is now in args, build the URL
@@ -63,7 +73,7 @@ def main(argv):
     obj = {}
     for kv in args[3 if objid else 2:]:
         if not '=' in kv:
-            print 'Parameter "%s" does not conform to expected key=value format' % kv
+            print >>sys.stderr, 'Parameter "%s" does not conform to expected key=value format' % kv
             return 1
         key, value = kv.split('=', 1)
         obj[key] = value
@@ -75,9 +85,13 @@ def main(argv):
     payload = dumps(obj) if method == 'POST' else None
 
     # construct the request object to send it out
-    res = urllib2.urlopen(url, payload)
+    try:
+        res = urllib2.urlopen(url, payload)
+    except urllib2.URLError:
+        print >>sys.stderr, 'Failed connecting to sds-server'
+        return 1
     if res is None:
-        print 'Failed requesting resource'
+        print >>sys.stderr, 'Failed requesting resource'
         return 1
 
     # probably a JSON response, get it
@@ -85,12 +99,12 @@ def main(argv):
         resobj = loads(res.read())
         res.close()
     except ValueError:
-        print 'Failed parsing server response'
+        print >>sys.stderr, 'Failed parsing server response'
         return 1
 
     # protocol failure check
     if not resobj['success']:
-        print 'Failure: %s' % resobj['content']
+        print >>sys.stderr, 'Failure: %s' % resobj['content']
         return 1
 
     # these are simple responses, we can handle them here
@@ -103,11 +117,11 @@ def main(argv):
     elif verb == 'update_partial':
         print 'Object %s updated.' % objid
     elif verb in ('get', 'find_only_one'):
-        print_object(resobj['content'])
+        print_object(resobj['content'], opts.idonly)
     elif verb in ('dump', 'find_all'):
-        print_object_list(resobj['content'])
+        print_object_list(resobj['content'], opts.idonly)
     else:
-        print 'Bad verb'
+        print >>sys.stderr, 'Bad verb'
         return 1
     return 0
 
