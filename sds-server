@@ -27,6 +27,7 @@ def _send_json(req, success, content):
     out = dumps({ 'success': success, 'content': content })
     headers.add('Content-Length', len(out))
     headers.add('Content-Type', 'application/json')
+    headers.add('Access-Control-Allow-Origin', '*')
     return http.http_response(req, 200, headers, out)
 
 
