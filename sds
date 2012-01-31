@@ -2,9 +2,9 @@
 #
 # sds -- Simple Document Storage
 #
-# This system assumes that your documents have some basic information and will do
-# some very basic asserting to make sure that your data has at least a name.  This is
-# to make it easier for us to print out later.
+# This system assumes that your documents have some basic information
+# and will do some very basic asserting to make sure that your data has
+# at least a name.  This is to make it easier for us to print out later.
 #
 #    sds --host=localhost --port=6329 <verb> [objid] [field=value ...]
 #
@@ -16,6 +16,11 @@
 #    sds update_partial 1 name=newname ...
 #    sds delete 1
 #
+# You can also get information from the JSON object returned by
+# referencing a simple path. I.e.:
+#
+#    sds get 5 ipmi.ip
+#
 # written by Mark Smith <mark@qq.is>
 #
 
@@ -25,22 +30,42 @@ from json import loads, dumps
 from optparse import OptionParser
 
 
-def print_object(obj, idonly=False):
+def print_object_path(obj, path):
+    '''Take an object, then parse a path and find the data at that path.'''
+    cur = obj
+    for which in path.split('.'):
+        if which.isdigit() and type(cur) is list:
+            cur = cur[which]
+        elif type(cur) is dict:
+            cur = cur[which]
+        else:
+            print 'Failure: not sure how to get the %s from %s' % (which, cur)
+    if type(cur) is dict or type(cur) is list:
+        print dumps(cur, sort_keys=True, indent=4)
+    else:
+        print cur
+
+
+def print_object(obj, idonly=False, path=None):
     '''Print a single object out so we can see the details of it.'''
     if obj is None:
        return
     if idonly:
         print obj['id']
+    elif path is not None:
+        print_object_path(obj, path)
     else:
         print dumps(obj, sort_keys=True, indent=4)
 
 
-def print_object_list(objlist, idonly=False):
+def print_object_list(objlist, idonly=False, path=None):
     '''Print out a list of objects.'''
     for idx in objlist:
         obj = objlist[idx]
         if idonly:
             print obj['id']
+        elif path is not None:
+            print_object_path(obj, path)
         else:
             name = obj['hostname'] if 'hostname' in obj else '(none)'
             print '%-4d %s' % (obj['id'], name)
@@ -68,6 +93,16 @@ def main(argv):
     verb = args[1]
     objid = args[2] if len(args) >= 3 and args[2].isdigit() else ''
     url = 'http://%s:%d/%s/%s' % (opts.host, opts.port, args[1], objid)
+
+    # chomp the path off if there is one
+    path = None
+    if verb in ('get', 'find_only_one', 'dump', 'find_all') and '=' not in args[-1]:
+        if verb == 'get': # must have objid
+            path = args[-1] if len(args) >= 4 else None
+        else:
+            path = args[-1] if len(args) >= 3 else None
+    if path is not None:
+        del args[-1]
 
     # now build the reqobj
     obj = {}
@@ -117,9 +152,9 @@ def main(argv):
     elif verb == 'update_partial':
         print 'Object %s updated.' % objid
     elif verb in ('get', 'find_only_one'):
-        print_object(resobj['content'], opts.idonly)
+        print_object(resobj['content'], opts.idonly, path)
     elif verb in ('dump', 'find_all'):
-        print_object_list(resobj['content'], opts.idonly)
+        print_object_list(resobj['content'], opts.idonly, path)
     else:
         print >>sys.stderr, 'Bad verb'
         return 1
